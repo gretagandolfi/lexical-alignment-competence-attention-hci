@@ -1,0 +1,389 @@
+---
+title: "ANALYSIS"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+#packages
+library(tidyverse)
+library(lme4)
+library(sjPlot)
+library(psycho)
+library(rmarkdown)
+
+data <- read.csv("") #testable file, not anonymised yet because of prolific IDs
+
+#anonymise data
+data <- data %>%
+  mutate(
+    Please.provide.your.Prolific.ID. = Vectorize(digest::sha1)
+    (Please.provide.your.Prolific.ID.)
+  )
+head(data)
+
+#save anonimised data
+write.csv(data, "anon-data.csv", row.names=TRUE)
+
+#load anonimised data
+data <- read.csv("anon-data.csv")
+
+```
+Data cleaning
+```{r}
+#data warngling
+data_clean <- data %>%
+  rename(participantID = Please.provide.your.Prolific.ID.) %>%
+  mutate(response = tolower(response),
+  condition_load = recode(subjectGroup,
+     "A:2 B:1" = "L",
+     "A:4 B:1" = "L",
+     "A:2 B:2" = "L",
+     "A:4 B:2" = "L",
+     "A:1 B:1" = "NL",
+     "A:3 B:1" = "NL",
+     "A:1 B:2" = "NL",
+     "A:3 B:2" = "NL"),
+    condition_competence = recode(subjectGroup,
+     "A:2 B:1" = "LC",
+     "A:4 B:1" = "HC",
+     "A:2 B:2" = "LC",
+     "A:4 B:2" = "HC",
+     "A:1 B:1" = "LC",
+     "A:3 B:1" = "HC",
+     "A:1 B:2" = "LC",
+     "A:3 B:2" = "HC"), 
+     memory_list = recode(subjectGroup,
+     "A:2 B:1" = "1",
+     "A:4 B:1" = "1",
+     "A:2 B:2" = "2",
+     "A:4 B:2" = "2",
+     "A:1 B:1" = "1",
+     "A:3 B:1" = "1",
+     "A:1 B:2" = "2",
+     "A:3 B:2" = "2",))
+
+data_clean$label <- as.factor(data_clean$label)
+data_clean$stim_type <- as.factor(data_clean$stim_type)
+data_clean$type_condition <- as.factor(data_clean$type_condition)
+data_clean$condition_load <- as.factor(data_clean$condition_load)
+data_clean$condition_competence <- as.factor(data_clean$condition_competence)
+data_clean$memory_list <- as.factor(data_clean$memory_list)
+```
+
+Select and check survey data
+```{r}
+#filer and select
+data_survey <- data_clean %>%
+    filter(responseType == "slider" | responseType == "comment") %>%
+    select(
+    participantID,
+    condition_load,
+    condition_competence,
+    stim1,
+    response,
+    responseCode
+    )
+
+#view(data_survey)
+
+write.csv(data_survey, file = "summary-responses.csv")
+
+#check those that are to exclude
+manipulation_check <- data_survey %>%
+    filter(stim1 == "What do you think it is the purpose of the experiment? <br> Enter NA if you have no idea") %>%
+    select(
+    participantID,
+    response)
+
+#view(manipulation_check)
+
+#load file with participants ID to exclude: manually selected those who guessed the purpose of the game 
+data_to_exclude <- read.csv("to_exclude.csv", sep=";")
+data_to_analyse <- subset(data_clean, !(participantID %in% data_to_exclude$to.exclude.id))
+
+#how many p did we exclude?
+data_to_exclude %>%
+    summary()
+```
+
+Select and check data for task 1 (picture naming)
+```{r}
+#filer and select
+pic_naming_data <- data_to_analyse %>%
+    select(subjectGroup,
+    condition_load,
+    condition_competence,
+    participantID,
+    label,
+    stim_type,
+    response,
+    correct) %>%
+    filter(stim_type == "exp")
+
+
+
+#add stimuli order
+pic_naming_data$stimuli.order <- 1:20
+
+#code entrainment effect
+pic_naming_data$entrained <- ifelse(
+    with(
+        pic_naming_data,
+        response == label),
+         1, 0)
+
+
+#view(pic_naming_data)
+
+#print summary load
+pic_naming_data %>%
+    group_by(condition_load) %>%
+    summarise(ent.sum = sum(entrained),
+            ent.m = mean(entrained),
+            end.sd = sd(entrained),
+            n_trials = n(),
+            n_participants = n_trials/20,
+            ent.prop = (ent.sum/n_participants)/20)
+            
+#print summary competence
+pic_naming_data %>%
+    group_by(condition_competence) %>%
+    summarise(ent.sum = sum(entrained),
+            ent.m = mean(entrained),
+            end.sd = sd(entrained),
+            n_trials = n(),
+            n_participants = n_trials/20,
+            ent.prop = (ent.sum/n_participants)/20)
+
+#print summary all
+summary.main <- pic_naming_data %>%
+    group_by(condition_load, condition_competence) %>%
+    summarise(ent.sum = sum(entrained),
+            ent.m = mean(entrained),
+            end.sd = sd(entrained),
+            n_trials = n(),
+            n_participants = n_trials/20,
+            ent.prop = (ent.sum/n_participants)/20) 
+
+summary.main %>%
+            view()
+
+#save summary all
+write.csv(summary.main, "summary-main.csv", row.names=TRUE)
+
+
+#plot competence * load effect
+vis_data <-pic_naming_data %>%
+    group_by(condition_competence,condition_load) %>%
+    summarise(ent.sum = sum(entrained),
+            ent.m = mean(entrained),
+            ent.sd = sd(entrained),
+            n_trials = n(),
+            n_participants = n_trials/20,
+            ent.prop = (ent.sum/n_participants)/20,
+            ent.se = ent.sd/sqrt(n()))
+
+ggplot(vis_data, aes(x=condition_competence, y=ent.m, fill=condition_competence, color=condition_competence)) +
+  ylim(0,1)+
+  scale_fill_grey()+
+  facet_grid(cols=vars(condition_load)) +
+  geom_point() +
+  theme(legend.position="bottom") +
+  geom_errorbar(aes(ymax=ent.m+ent.se,ymin=ent.m-ent.se, width=.2), position=position_dodge(.5)) +
+  theme_light()
+
+ggsave("entrainment-plot.jpg", plot=last_plot())
+```
+
+Select and check data for task 2 (memory test: 5 words)
+```{r}
+
+correct_words <- c("silk", "airport", "house", "journal", "tissue") #given before the pic naming and matching
+
+#filer and select
+data_m5 <- data_to_analyse %>%
+    filter(responseType == "box*5") %>%
+    select(
+    participantID,
+    condition_load,
+    condition_competence,
+    response)
+
+#compute accuracy and scores
+response_list <- str_split(data_m5$response, ";")
+a <- c()
+for (i in response_list){
+    acc <- sum(i %in% correct_words)
+    a <- c(a, acc)
+}
+data_m5$accuracy <- a/5 # nolint
+data_m5$points <- a # nolint
+
+
+data_m5 %>%
+    summarise(
+        n = n(),
+        accuracy.mean = mean(accuracy),
+        accuracy.sd = sd(accuracy), 
+        points.mean= mean(points))
+```
+
+Select and check data from the task 3 (memory test: recognition task)
+```{r}
+#filer and select
+data_m_rt <- data_to_analyse %>%
+    filter(stimFormat == "list") %>%
+    select(
+    participantID,
+    condition_load,
+    condition_competence,
+    stim_actual,
+    LogFreq.Zipf.,
+    type_condition,
+    word.length,
+    key,
+    correct, 
+    memory_list
+    ) %>%
+    mutate(true_value = if_else(key == 1, "seen", "unseen"), 
+            Hit = if_else(true_value == "seen" & correct ==1, 1, NA), 
+            CorrectRej = if_else(true_value == "unseen" & correct ==1, 1, NA),
+            Miss = if_else(true_value == "seen" & correct ==0, 1, NA),
+            FalseAlarm = if_else(true_value == "unseen" & correct ==0, 1, NA)
+            ) 
+
+# compute d-prime    
+dprime.all <- data_m_rt %>%
+    group_by(participantID, condition_load, condition_competence) %>%
+    summarise(
+        Hits = sum(Hit, na.rm = TRUE),
+        Misses = sum(Miss, na.rm = TRUE),
+        FalseAlarms = sum(FalseAlarm, na.rm = TRUE),
+        CorrectRejs = sum(CorrectRej, na.rm = TRUE),
+        TotalTarg = Hits + Misses,
+        TotalDis= FalseAlarms + CorrectRejs,
+        NumRes = TotalTarg + TotalDis)
+
+view(dprime.all)
+
+dprime.stats<-psycho::dprime(dprime.all$Hits,dprime.all$FalseAlarms, dprime.all$Misses, dprime.all$CorrectRejs)
+dprime.all$dprime <- dprime.stats$dprime
+head(dprime.all)
+
+dprime.all %>%
+    group_by(condition_load, condition_competence) %>%
+    summarise(m.m = mean(dprime),
+            n = n()) # nolint  
+```
+
+
+Put everything together for correl (grouping by participants)
+```{r}
+entrainment <- pic_naming_data %>%
+    group_by(
+        participantID, condition_load, condition_competence
+    ) %>%
+    summarise(
+        entrainment=mean(entrained)
+    )
+
+
+memory.5.words <- data_m5 %>%
+    group_by(
+        participantID, condition_load, condition_competence
+    ) %>%
+    summarise(
+        memory.5.words=mean(accuracy)
+    )
+
+memory.60.words <- dprime.all %>%
+    group_by(
+        participantID, condition_load, condition_competence
+    ) %>%
+    summarise(
+        memory.60.words=mean(dprime)
+    )
+
+
+data_c0 <- merge(entrainment, memory.5.words, on=c("participantID", "condition_load", "condition_competence"))
+data_c1 <- merge(data_c0 , memory.60.words, on=c("participantID", "condition_load", "condition_competence"))
+data_c2 <- merge(entrainment , memory.60.words, on=c("participantID", "condition_load", "condition_competence"))
+
+
+#head(data_c1) #for load condition (entrainment x memory 5)
+#head(data_c2) #(entrainment x memory 60)
+
+#plot effecr of entrainment on task3 (60 words)
+ggplot(data_c2, aes(entrainment, memory.60.words)) + 
+    geom_jitter() + 
+    geom_smooth(method=lm) + 
+    facet_grid(rows=vars(condition_load), cols=vars(condition_competence)) +
+    theme_light()
+
+ggsave("correlation-plot-all-words.jpg", plot=last_plot())
+
+
+#plot effecr of entrainment on task2 (5 words), only for load
+ggplot(data_c1, aes(entrainment, memory.5.words)) + 
+    geom_jitter() + 
+    geom_smooth(method=lm) + 
+    facet_grid(rows=vars(condition_load), cols=vars(condition_competence)) 
+
+ggsave("correlation-plot-accuracy-load-only-cond.jpg", plot=last_plot())
+```
+
+Models
+```{r}
+# TASK 1: PIC NAMING AND MATCHING
+#main task: do ppl entrian differently in different conditions?
+
+contrasts(pic_naming_data$condition_competence) <- c(-0.5, .5)
+contrasts(pic_naming_data$condition_load) <- c(-0.5, .5)
+
+#m <- glmer(entrained ~ competence.t*load.t + (1 | participantID) + (competence.t + load.t| label), data = pic_naming_data, family = "binomial", control = glmerControl("bobyqa")) #doesn't converge
+#m <- glmer(entrained ~ competence.t*load.t + (1 | participantID) + (competence.t + load.t|| label), data = pic_naming_data, family = "binomial", control = glmerControl("bobyqa")) #doesn't converge
+#m <- glmer(entrained ~ competence.t*load.t + (1 | participantID) + (load.t|label), data = pic_naming_data, family = "binomial", control = glmerControl("bobyqa")) #doesn't converge
+#m <- glmer(entrained ~ competence.t*load.t + (1 | participantID) + (load.t||label), data = pic_naming_data, family = "binomial", control = glmerControl("bobyqa")) #doesn't converge
+m <- glmer(entrained ~ condition_competence*condition_load + (1 | participantID) + (1| label), data = pic_naming_data, family = "binomial", control = glmerControl("bobyqa")) 
+summary(m) #small effect of the interaction (*)
+
+#ranef participants
+plot_model(m, type = "re", terms= "label", sort.est = "sort.all", grid=FALSE)[1]
+ggsave("participants.jpg", plot=last_plot())
+
+#ranef stimuli
+plot_model(m, type = "re", terms= "label", sort.est = "sort.all", grid=FALSE)[2]
+ggsave("stimuli.jpg", plot=last_plot())
+
+#fixef predictions load and competence
+plot_model(m, type = "pred",  terms = c("condition_load", "condition_competence"), mdrt.values = "meansd")
+ggsave("main-model-effects.jpg", plot=last_plot())
+
+#print model summary
+sink("pic-namimg-task.txt")
+print(summary(m))
+sink()
+
+# TASK 3: SURPRISE MEMORY TASK
+
+#memory: does d-prime accuracy predicts entrainment?
+
+contrasts(data_c2$condition_competence) <- c(-0.5, .5)
+contrasts(data_c2$condition_load) <- c(-0.5, .5)
+
+data_c2$entrainment.s <- scale(data_c2$entrainment, scale=FALSE)
+
+
+m1 <- lm(memory.60.words ~ entrainment.s*condition_competence*condition_load, data = data_c2)
+summary(m1) #merginal effect of entrainment (entrainment, 0.07567, 0.03875, 1.953, 0.0524)
+
+#print model summary
+sink("/Users/gretagandolfi/Desktop/OneDrive - University of Edinburgh/ESR6/0DONE/_STUDY2_DAVI/analysis/memory.txt")
+print(summary(m1))
+sink()
+```
+
+
+
+
+ 
