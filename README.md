@@ -3,7 +3,7 @@
 The repository contains:
 - a .rdm file with analysis script (analysis-ANON.rmd)
 - a .csv Testable output file of results (raw, anonymised data: anon-data.csv) (variables explained [here](https://help.testable.org/kb/en/feature-manual-57706))
-- a .csv file with anonymised IDs of participants that were excluded from the analysis (to-exclude.csv). The file includes the following variables:
+- a .csv file with anonymised IDs of participants that were excluded from the analysis (to_exclude.csv). The file includes the following variables:
   - to.exclude.id (IDs)
   - why (reason for exclusion)
   - response (response provided to the question "_What do you think it is the purpose of the experiment? <br> Enter NA if you have no idea_"
