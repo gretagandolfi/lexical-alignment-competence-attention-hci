@@ -1,6 +1,8 @@
 # Effects of competence and attention on lexical alignment in HCI
 ## Analysis, data and supplementary materials
-The repository contains a rdm file with analysis script and the Testable output file of results (raw, anonymised data)
+The repository contains:
+- a rdm file with analysis script (analysis-ANON.rmd)
+- Testable output file of results (raw, anonymised data: anon-data.csv)
 
 **Pre-registration**: https://doi.org/10.17605/OSF.IO/EZYTH
 
